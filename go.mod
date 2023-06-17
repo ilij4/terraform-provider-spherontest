@@ -1,4 +1,4 @@
-module tf-provider
+module terraform-provider-spherontest
 
 go 1.19
 

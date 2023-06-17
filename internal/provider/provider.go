@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"tf-provider/internal/client"
+	"terraform-provider-spherontest/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -29,7 +29,7 @@ type SpheronProviderModel struct {
 }
 
 func (p *SpheronProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "spheron"
+	resp.TypeName = "spherontest"
 	resp.Version = p.version
 }
 

@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"tf-provider/internal/provider"
+	"terraform-provider-spherontest/internal/provider"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
