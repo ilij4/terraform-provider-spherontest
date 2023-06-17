@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/spheron/terraform-provider-spheron/internal/client"
+	"tf-provider/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"

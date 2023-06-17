@@ -1,4 +1,4 @@
-module github.com/spheron/terraform-provider-spheron
+module tf-provider
 
 go 1.19
 
