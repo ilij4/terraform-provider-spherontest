@@ -16,8 +16,8 @@ Interface with the Spheron API.
 terraform {
   required_providers {
     spheron = {
-      version = "0.1"
-      source  = "spheron/spheron"
+      version = "0.0.3"
+      source  = "ilij4/spherontest"
     }
   }
 }

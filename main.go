@@ -37,7 +37,7 @@ func main() {
 
 	opts := providerserver.ServeOpts{
 		// TODO: Update this string with the published name of your provider.
-		Address: "registry.terraform.io/spheron/terraform-provider-spheron",
+		Address: "registry.terraform.io/ilij4/terraform-provider-spherontest",
 		Debug:   debug,
 	}
 

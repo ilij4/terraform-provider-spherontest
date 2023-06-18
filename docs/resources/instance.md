@@ -71,4 +71,9 @@ Optional:
 
 - `exposed_port` (Number) The port container port will be exposed to. Currently only posible to expose to port 80. Leave empty to map to random value. Exposed port will be know and available for use after the deployment.
 
-
+### Available regions
+- us-east
+- "us-west
+- us-central
+- eu-west
+- any
