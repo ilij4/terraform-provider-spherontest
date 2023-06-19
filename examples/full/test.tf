@@ -24,27 +24,27 @@ provider "spherontest" {
 # }
 
 
-resource "spherontest_instance" "instance_test" {
-  image         = "crccheck/hello-world"
-  tag           = "latest"
-  cluster_name  = "tf_v2_test"
-  region        = "any"
-  machine_image = "Ventus Small"
+# resource "spherontest_instance" "instance_test" {
+#   image         = "crccheck/hello-world"
+#   tag           = "latest"
+#   cluster_name  = "tf_v2_test"
+#   region        = "any"
+#   machine_image = "Ventus Small"
 
-  # args     = ["arg"]
-  # commands = ["command"]
+#   # args     = ["arg"]
+#   # commands = ["command"]
 
-  ports = [
-    {
-      container_port = 8000
-    }
-  ]
+#   ports = [
+#     {
+#       container_port = 8000
+#     }
+#   ]
 
-  health_check = {
-    path = "/"
-    port = 8000
-  }
-}
+#   health_check = {
+#     path = "/"
+#     port = 8000
+#   }
+# }
 
 # resource "spheron_instance" "instance_test2" {
 #   image         = "crccheck/hello-world"

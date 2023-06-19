@@ -3,12 +3,12 @@
 page_title: "spherontest Provider"
 subcategory: ""
 description: |-
-  Interface with the Spheron API.
+  Spheron terraform provider.
 ---
 
 # spherontest Provider
 
-Interface with the Spheron API.
+Spheron terraform provider.
 
 ## Example Usage
 
@@ -16,7 +16,7 @@ Interface with the Spheron API.
 terraform {
   required_providers {
     spheron = {
-      version = "0.0.3"
+      version = "0.0.4"
       source  = "ilij4/spherontest"
     }
   }
