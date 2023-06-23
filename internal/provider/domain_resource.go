@@ -119,7 +119,7 @@ func (r *DomainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create domain for instance",
+			"Unable to create domain for instance111",
 			err.Error(),
 		)
 		return
@@ -129,7 +129,7 @@ func (r *DomainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create domain for instance",
+			"Unable to create domain for instance1112222",
 			err.Error(),
 		)
 		return
@@ -139,8 +139,8 @@ func (r *DomainResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	if url == "" {
 		resp.Diagnostics.AddError(
-			"Unable to create domain for instance",
-			"Unable to create domain for instance",
+			"Unable to create domain for instance333, no urls",
+			"Unable to create domain for instance333",
 		)
 		return
 	}
@@ -204,6 +204,12 @@ func (r *DomainResource) Read(ctx context.Context, req resource.ReadRequest, res
 			"Coudn't fetch instance for specified domain.",
 			err.Error(),
 		)
+		return
+	}
+
+	if instance.State == "Closed" || instance.ActiveOrder == "" {
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning("Instance domain was attached to is closed", fmt.Sprintf("Domain %s is attached to closed instance. Applying will attach domain to redeployed instance.", state.Name.ValueString()))
 		return
 	}
 
@@ -331,54 +337,4 @@ func (r *DomainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 func (r *DomainResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func isValidDomainType(value string) bool {
-	switch client.DomainTypeEnum(value) {
-	case client.DomainTypeDomain, client.DomainTypeSubdomain:
-		return true
-	}
-	return false
-}
-
-func getInstanceDeploymentURL(input client.InstanceOrder, desiredPort int) string {
-	if input.ProtocolData != nil && input.ProtocolData.ProviderHost != "" {
-		for _, port := range input.ClusterInstanceConfiguration.Ports {
-			if port.ContainerPort == desiredPort {
-				if port.ExposedPort == 80 && input.URLPreview != "" {
-					return input.URLPreview
-				}
-
-				return fmt.Sprintf("%s:%d", input.ProtocolData.ProviderHost, port.ExposedPort)
-			}
-		}
-	}
-
-	return ""
-}
-
-func getPortFromDeploymentURL(input client.InstanceOrder, urlStr string) (int, error) {
-	if input.ProtocolData != nil && input.ProtocolData.ProviderHost != "" {
-		for _, port := range input.ClusterInstanceConfiguration.Ports {
-			if urlStr == input.URLPreview && port.ExposedPort == 80 {
-				return port.ContainerPort, nil
-			}
-
-			expectedURL := fmt.Sprintf("%s:%d", input.ProtocolData.ProviderHost, port.ExposedPort)
-			if urlStr == expectedURL {
-				return port.ContainerPort, nil
-			}
-		}
-	}
-
-	return 0, fmt.Errorf("no matching port found for the provided URL")
-}
-
-func findDomainByID(domains []client.Domain, id string) (client.Domain, error) {
-	for _, domain := range domains {
-		if domain.ID == id {
-			return domain, nil
-		}
-	}
-	return client.Domain{}, fmt.Errorf("Domain with ID %s not found", id)
 }

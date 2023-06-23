@@ -2,12 +2,9 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -59,7 +56,7 @@ func (r *MarketplaceInstanceResource) Schema(ctx context.Context, req resource.S
 				MarkdownDescription: "Region to which to deploy instance.",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplaceIfConfigured(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"machine_image": schema.StringAttribute{
@@ -162,11 +159,6 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	region := plan.Region.ValueString()
-	if region == "" {
-		region = "any"
-	}
-
 	computeMachines, err := r.client.GetComputeMachines()
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -223,7 +215,7 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 		OrganizationID:       organization.ID,
 		AkashImageID:         chosenMachineID,
 		UniqueTopicID:        topicId.String(),
-		Region:               region,
+		Region:               plan.Region.ValueString(),
 	}
 
 	response, err := r.client.CreateClusterInstanceFromTemplate(instanceConfig)
@@ -293,6 +285,13 @@ func (r *MarketplaceInstanceResource) Read(ctx context.Context, req resource.Rea
 		)
 		return
 	}
+
+	if instance.State == "Closed" {
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning("Markerplace app instance is closed", fmt.Sprintf("Markerplace app instance %s is closed. Applying will redeploy new markerplace app instance in its place.", state.Name.ValueString()))
+		return
+	}
+
 	cluster, err := r.client.GetCluster(instance.Cluster)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -359,7 +358,6 @@ func (r *MarketplaceInstanceResource) Update(ctx context.Context, req resource.U
 
 func (r *MarketplaceInstanceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	tflog.Debug(ctx, "Preparing to delete item resource")
-	// Retrieve values from state
 	var state MarketplaceInstanceResourceModel
 
 	diags := req.State.Get(ctx, &state)
@@ -370,7 +368,7 @@ func (r *MarketplaceInstanceResource) Delete(ctx context.Context, req resource.D
 	}
 
 	_, err := r.client.CloseClusterInstance(state.Id.ValueString())
-	if err != nil {
+	if err != nil && err.Error() != "Instance already closed" {
 		resp.Diagnostics.AddError(
 			"Unable to destroy marketplace instance",
 			err.Error(),
@@ -382,128 +380,4 @@ func (r *MarketplaceInstanceResource) Delete(ctx context.Context, req resource.D
 
 func (r *MarketplaceInstanceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func findComputeMachineID(machines []client.ComputeMachine, name string) (string, error) {
-	for _, machine := range machines {
-		if machine.Name == name {
-			return machine.ID, nil
-		}
-	}
-
-	return "", errors.New("ComputeMachine not found with the provided ID")
-}
-
-func findMarketplaceAppByName(apps []client.MarketplaceApp, name string) (client.MarketplaceApp, error) {
-	for _, app := range apps {
-		if app.Name == name {
-			return app, nil
-		}
-	}
-
-	return client.MarketplaceApp{}, fmt.Errorf("MarketplaceApp not found with name: %s", name)
-}
-
-func mapMarketplaceEnvs(envList []Env) []client.MarketplaceDeploymentVariable {
-	marketplaceEnvs := make([]client.MarketplaceDeploymentVariable, 0, len(envList))
-	for _, env := range envList {
-		marketplaceEnv := client.MarketplaceDeploymentVariable{
-			Value: env.Value.ValueString(),
-			Label: env.Key.ValueString(),
-		}
-		marketplaceEnvs = append(marketplaceEnvs, marketplaceEnv)
-	}
-	return marketplaceEnvs
-}
-
-func checkRequiredDeploymentVariables(appVariables []client.MarketplaceAppVariable, envList []Env) ([]client.MarketplaceDeploymentVariable, error) {
-	allVariables := make(map[string]client.MarketplaceAppVariable)
-	missingVariables := make(map[string]bool)
-	deploymentVariables := make([]client.MarketplaceDeploymentVariable, 0, len(envList))
-
-	for _, appVar := range appVariables {
-		allVariables[appVar.Name] = appVar
-		missingVariables[appVar.Name] = true
-	}
-
-	for _, env := range envList {
-		if appVar, ok := allVariables[env.Key.ValueString()]; ok {
-			marketplaceEnv := client.MarketplaceDeploymentVariable{
-				Value: env.Value.ValueString(),
-				Label: appVar.Label,
-			}
-			deploymentVariables = append(deploymentVariables, marketplaceEnv)
-
-			missingVariables[appVar.Name] = false
-		}
-	}
-
-	for varName, isMissing := range missingVariables {
-		if isMissing {
-			return nil, errors.New(fmt.Sprintf("Missing required deployment variable: %s", varName))
-		}
-	}
-
-	return deploymentVariables, nil
-}
-
-func mapModelPortToPortValue(portList []client.Port) []attr.Value {
-	ports := make([]attr.Value, len(portList))
-	for i, pm := range portList {
-		portTypes := make(map[string]attr.Type)
-		portValues := make(map[string]attr.Value)
-
-		portTypes["container_port"] = types.Int64Type
-		portTypes["exposed_port"] = types.Int64Type
-
-		portValues["container_port"] = types.Int64Value(int64(pm.ContainerPort))
-		portValues["exposed_port"] = types.Int64Value(int64(pm.ExposedPort))
-		port := types.ObjectValueMust(portTypes, portValues)
-
-		ports[i] = port
-	}
-	return ports
-}
-
-func getPortAtrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"container_port": types.Int64Type,
-		"exposed_port":   types.Int64Type,
-	}
-}
-
-func mapClientEnvsToEnvsValue(clientEnvs []client.Env, isSecret bool) []attr.Value {
-	if len(clientEnvs) == 0 {
-		return nil
-	}
-
-	envList := make([]attr.Value, 0, len(clientEnvs))
-
-	for _, clientEnv := range clientEnvs {
-		if clientEnv.IsSecret != isSecret {
-			continue
-		}
-
-		split := strings.SplitN(clientEnv.Value, "=", 2)
-		keyString, valueString := split[0], split[1]
-
-		portTypes := make(map[string]attr.Type)
-		portValues := make(map[string]attr.Value)
-
-		portTypes["key"] = types.StringType
-		portTypes["value"] = types.StringType
-
-		portValues["key"] = types.StringValue(keyString)
-		portValues["value"] = types.StringValue(valueString)
-
-		envList = append(envList, types.ObjectValueMust(portTypes, portValues))
-	}
-	return envList
-}
-
-func getEnvAtrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"key":   types.StringType,
-		"value": types.StringType,
-	}
 }

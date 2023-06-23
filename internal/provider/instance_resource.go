@@ -2,10 +2,8 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -230,11 +228,6 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	region := plan.Region.ValueString()
-	if region == "" {
-		region = "any"
-	}
-
 	var healthCheck HealthCheck
 	opts := basetypes.ObjectAsOptions{}
 	plan.HealthCheck.As(ctx, &healthCheck, opts)
@@ -252,7 +245,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		Env:                   append(mapEnvsToClientEnvs(plan.Env, false), mapEnvsToClientEnvs(plan.EnvSecret, true)...),
 		Command:               plan.Commands,
 		Args:                  plan.Args,
-		Region:                region,
+		Region:                plan.Region.ValueString(),
 		AkashMachineImageName: plan.MachineImage.ValueString(),
 	}
 
@@ -264,7 +257,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		ClusterProvider: "DOCKERHUB",
 		ClusterName:     plan.ClusterName.ValueString(),
 		HealthCheckURL:  healthCheck.Path.ValueString(),
-		HealthCheckPort: "",
+		HealthCheckPort: healthCheck.Port.String(),
 	}
 
 	response, err := r.client.CreateClusterInstance(createRequest)
@@ -334,6 +327,12 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 			"Coudnt fetch instance by provided id.",
 			err.Error(),
 		)
+		return
+	}
+
+	if instance.State == "Closed" {
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning("Instance is closed", fmt.Sprintf("Instance %s, in cluster %s is closed. Applying will redeploy new instance in its place.", instance.ID, state.ClusterName.ValueString()))
 		return
 	}
 
@@ -505,7 +504,7 @@ func (r *InstanceResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 
 	_, err := r.client.CloseClusterInstance(state.Id.ValueString())
-	if err != nil {
+	if err != nil && err.Error() != "Instance already closed" {
 		resp.Diagnostics.AddError(
 			"Unable to destroy Instance",
 			err.Error(),
@@ -517,94 +516,4 @@ func (r *InstanceResource) Delete(ctx context.Context, req resource.DeleteReques
 
 func (r *InstanceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func mapPortToPortModel(portList []Port) []client.Port {
-	ports := []client.Port{}
-	for _, pm := range portList {
-		exposedPort := int(pm.ContainerPort.ValueInt64())
-		if pm.ExposedPort.ValueInt64() != 0 {
-			exposedPort = int(pm.ExposedPort.ValueInt64())
-		}
-
-		port := client.Port{
-			ContainerPort: int(pm.ContainerPort.ValueInt64()),
-			ExposedPort:   exposedPort,
-		}
-		ports = append(ports, port)
-	}
-	return ports
-}
-
-func mapModelPortToPort(portList []client.Port) []Port {
-	ports := []Port{}
-	for _, pm := range portList {
-		port := Port{
-			ContainerPort: types.Int64Value(int64(pm.ContainerPort)),
-			ExposedPort:   types.Int64Value(int64(pm.ExposedPort)),
-		}
-		ports = append(ports, port)
-	}
-	return ports
-}
-
-func mapEnvsToClientEnvs(envList []Env, isSecret bool) []client.Env {
-	clientEnvs := make([]client.Env, 0, len(envList))
-	for _, env := range envList {
-		clientEnv := client.Env{
-			Value:    env.Key.ValueString() + "=" + env.Value.ValueString(),
-			IsSecret: isSecret,
-		}
-		clientEnvs = append(clientEnvs, clientEnv)
-	}
-	return clientEnvs
-}
-
-func mapClientEnvsToEnvs(clientEnvs []client.Env, isSecret bool) []Env {
-	envList := make([]Env, 0, len(clientEnvs))
-
-	for _, clientEnv := range clientEnvs {
-		if clientEnv.IsSecret != isSecret {
-			continue
-		}
-
-		split := strings.SplitN(clientEnv.Value, "=", 2)
-		keyString, valueString := split[0], split[1]
-
-		newEnv := Env{
-			Key:   types.StringValue(keyString),
-			Value: types.StringValue(valueString),
-		}
-
-		envList = append(envList, newEnv)
-	}
-
-	if len(envList) == 0 {
-		return nil
-	}
-
-	return envList
-}
-
-func ParseClientPorts(responseString string) ([]client.Port, error) {
-	trimmedString := strings.TrimPrefix(responseString, "data: ")
-
-	type ResponseData struct {
-		Type int `json:"type"`
-		Data struct {
-			DeploymentStatus string        `json:"deploymentStatus"`
-			LatestUrlPreview string        `json:"latestUrlPreview"`
-			ProviderHost     string        `json:"providerHost"`
-			Ports            []client.Port `json:"ports"`
-		} `json:"data"`
-		Session string `json:"session"`
-	}
-
-	var responseData ResponseData
-	err := json.Unmarshal([]byte(trimmedString), &responseData)
-	if err != nil {
-		return nil, err
-	}
-
-	return responseData.Data.Ports, nil
 }
