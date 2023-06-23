@@ -16,13 +16,13 @@ Spheron terraform provider.
 terraform {
   required_providers {
     spheron = {
-      version = "0.0.4"
+      version = "0.0.5"
       source  = "ilij4/spherontest"
     }
   }
 }
 
-provider "spheron" {
+provider "spherontest" {
   # token = ""
 }
 ```
