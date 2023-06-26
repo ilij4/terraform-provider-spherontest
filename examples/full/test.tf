@@ -10,7 +10,7 @@ terraform {
   required_providers {
     spherontest = {
       source  = "ilij4/spherontest"
-      version = "0.0.5"
+      version = "1.0.0"
     }
   }
 }
@@ -46,7 +46,7 @@ provider "spherontest" {
 #   }
 # }
 
-resource "spherontest_instance" "instance_test2" {
+resource "spheron_instance" "instance_test" {
   image         = "crccheck/hello-world"
   tag           = "latest"
   cluster_name  = "tf_test"
@@ -87,27 +87,27 @@ resource "spherontest_domain" "domain_test" {
   instance_id   = spherontest_instance.instance_test2.id
 }
 
-# resource "spheron_marketplace_instance" "instance_market_test" {
-#   name          = "Postgres"
-#   machine_image = "Ventus Nano"
+resource "spheron_marketplace_instance" "instance_market_test" {
+  name          = "Postgres"
+  machine_image = "Ventus Nano"
 
-#   env = [
-#     {
-#       key   = "POSTGRES_PASSWORD"
-#       value = "passSecrettt"
-#     },
-#     {
-#       key   = "POSTGRES_USER"
-#       value = "admin"
-#     },
-#     {
-#       key   = "POSTGRES_DB"
-#       value = "myDB"
-#     }
-#   ]
+  env = [
+    {
+      key   = "POSTGRES_PASSWORD"
+      value = "passSecrettt"
+    },
+    {
+      key   = "POSTGRES_USER"
+      value = "admin"
+    },
+    {
+      key   = "POSTGRES_DB"
+      value = "myDB"
+    }
+  ]
 
-#   region = "any"
-# }
+  region = "any"
+}
 
 # resource "spheron_marketplace_instance" "instance_IPFS_test" {
 #   name          = "IPFS"

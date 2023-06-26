@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-// Ensure DomainResource satisfies the required interfaces
 var _ resource.Resource = &DomainResource{}
 var _ resource.ResourceWithImportState = &DomainResource{}
 
@@ -83,7 +82,6 @@ func (r *DomainResource) Schema(ctx context.Context, req resource.SchemaRequest,
 }
 
 func (r *DomainResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
@@ -160,7 +158,6 @@ func (r *DomainResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	// populate the state from the domain
 	plan.ID = types.StringValue(domain.ID)
 	plan.Verified = types.BoolValue(domain.Verified)
 
@@ -174,7 +171,7 @@ func (r *DomainResource) Create(ctx context.Context, req resource.CreateRequest,
 func (r *DomainResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state DomainResourceModel
 	tflog.Debug(ctx, "Preparing to read item resource")
-	// Get current state
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -215,8 +212,8 @@ func (r *DomainResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	order, err := r.client.GetClusterInstanceOrder(instance.ActiveOrder)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Instance domain is attached to doesn't have provisioned deployments.",
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning("Instance domain is attached to doesn't have provisioned deployments.",
 			err.Error(),
 		)
 		return
@@ -226,8 +223,8 @@ func (r *DomainResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	containerPort, err := getPortFromDeploymentURL(order, domain.Link)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Instance doesn't have provisioned deployments.",
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning("Instance doesn't have provisioned deployments.",
 			err.Error(),
 		)
 		return
@@ -238,14 +235,12 @@ func (r *DomainResource) Read(ctx context.Context, req resource.ReadRequest, res
 	state.Verified = types.BoolValue(domain.Verified)
 	state.Type = types.StringValue(string(domain.Type))
 
-	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *DomainResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan DomainResourceModel
 
-	// Retrieve values from plan
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {

@@ -4,16 +4,21 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"terraform-provider-spherontest/internal/client"
@@ -37,18 +42,21 @@ type InstanceResource struct {
 
 // ExampleResourceModel describes the resource data model.
 type InstanceResourceModel struct {
-	Image        types.String `tfsdk:"image"`
-	Tag          types.String `tfsdk:"tag"`
-	ClusterName  types.String `tfsdk:"cluster_name"`
-	Ports        []Port       `tfsdk:"ports"`
-	Env          []Env        `tfsdk:"env"`
-	EnvSecret    []Env        `tfsdk:"env_secret"`
-	Commands     []string     `tfsdk:"commands"`
-	Args         []string     `tfsdk:"args"`
-	Region       types.String `tfsdk:"region"`
-	MachineImage types.String `tfsdk:"machine_image"`
-	Id           types.String `tfsdk:"id"`
-	HealthCheck  types.Object `tfsdk:"health_check"`
+	Image             types.String `tfsdk:"image"`
+	Tag               types.String `tfsdk:"tag"`
+	ClusterName       types.String `tfsdk:"cluster_name"`
+	Ports             []Port       `tfsdk:"ports"`
+	Env               []Env        `tfsdk:"env"`
+	EnvSecret         []Env        `tfsdk:"env_secret"`
+	Commands          []string     `tfsdk:"commands"`
+	Args              []string     `tfsdk:"args"`
+	Region            types.String `tfsdk:"region"`
+	MachineImage      types.String `tfsdk:"machine_image"`
+	Id                types.String `tfsdk:"id"`
+	HealthCheck       types.Object `tfsdk:"health_check"`
+	Storage           types.Int64  `tfsdk:"storage"`
+	Replicas          types.Int64  `tfsdk:"replicas"`
+	PersistentStorage types.Object `tfsdk:"persistent_storage"`
 }
 
 type Port struct {
@@ -64,6 +72,12 @@ type Env struct {
 type HealthCheck struct {
 	Port types.Int64  `tfsdk:"port"`
 	Path types.String `tfsdk:"path"`
+}
+
+type PersistentStorage struct {
+	Class      types.String `tfsdk:"class"`
+	MountPoint types.String `tfsdk:"mount_point"`
+	Size       types.Int64  `tfsdk:"size"`
 }
 
 func (r *InstanceResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -91,6 +105,28 @@ func (r *InstanceResource) Schema(ctx context.Context, req resource.SchemaReques
 				MarkdownDescription: "The name of the cluster.",
 				Required:            true,
 			},
+			"storage": schema.Int64Attribute{
+				MarkdownDescription: "Instance storage in GB. Value cannot exceed 1024GB",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+					int64validator.AtMost(1024),
+				},
+				Required: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
+			},
+			"replicas": schema.Int64Attribute{
+				MarkdownDescription: "Number of instance replicas.",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+					int64validator.AtMost(20),
+				},
+				Required: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
+			},
 			"ports": schema.ListNestedAttribute{
 				MarkdownDescription: "The list of port mappings",
 				NestedObject: schema.NestedAttributeObject{
@@ -109,9 +145,9 @@ func (r *InstanceResource) Schema(ctx context.Context, req resource.SchemaReques
 						},
 					},
 				},
-				Optional: true,
+				Required: true,
 				PlanModifiers: []planmodifier.List{
-					listplanmodifier.RequiresReplaceIfConfigured(),
+					listplanmodifier.RequiresReplace(),
 				},
 			},
 			"env": schema.SetNestedAttribute{
@@ -170,13 +206,62 @@ func (r *InstanceResource) Schema(ctx context.Context, req resource.SchemaReques
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"health_check": schema.ObjectAttribute{
+			"health_check": schema.SingleNestedAttribute{
 				MarkdownDescription: "Path and container port on which health check should be done.",
-				AttributeTypes: map[string]attr.Type{
-					"path": types.StringType,
-					"port": types.Int64Type,
+				Attributes: map[string]schema.Attribute{
+					"path": schema.StringAttribute{
+						MarkdownDescription: "Path on which health check should be done.",
+						Required:            true,
+					},
+					"port": schema.Int64Attribute{
+						MarkdownDescription: "Instance container path on which health check should be done.",
+						Required:            true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AtMost(65353),
+						},
+					},
 				},
 				Optional: true,
+			},
+			"persistent_storage": schema.SingleNestedAttribute{
+				MarkdownDescription: "Persistent storage that will be attached to the instance.",
+				Attributes: map[string]schema.Attribute{
+					"class": schema.StringAttribute{
+						MarkdownDescription: "Storage class. Available classes are HDD, SSD and NVMe",
+						Required:            true,
+						Validators: []validator.String{stringvalidator.OneOf(
+							"HDD",
+							"SSD",
+							"NVMe",
+						)},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
+					},
+					"mount_point": schema.StringAttribute{
+						MarkdownDescription: "Attachement point used fot attaching persistent storage.",
+						Required:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
+					},
+					"size": schema.Int64Attribute{
+						MarkdownDescription: "Persistent storage in GB. Value cannot exceed 1024GB",
+						Required:            true,
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+							int64validator.AtMost(1024),
+						},
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.RequiresReplace(),
+						},
+					},
+				},
+				Optional: true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.RequiresReplace(),
+				},
 			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Id of the instance.",
@@ -228,9 +313,24 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	var healthCheck HealthCheck
 	opts := basetypes.ObjectAsOptions{}
-	plan.HealthCheck.As(ctx, &healthCheck, opts)
+
+	var customSpecs = client.CustomInstanceSpecs{
+		Storage: fmt.Sprintf("%dGi", int(plan.Storage.ValueInt64())),
+	}
+
+	if !plan.PersistentStorage.IsNull() {
+		var persistentStorage PersistentStorage
+		plan.PersistentStorage.As(ctx, &persistentStorage, opts)
+
+		value, _ := GetPersistentStorageClassEnum(persistentStorage.Class.ValueString())
+
+		customSpecs.PersistentStorage = client.PersistentStorage{
+			Class:      value,
+			MountPoint: persistentStorage.MountPoint.ValueString(),
+			Size:       fmt.Sprintf("%dGi", int(persistentStorage.Size.ValueInt64())),
+		}
+	}
 
 	topicId := uuid.New()
 
@@ -239,7 +339,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		Protocol:              client.ClusterProtocolAkash,
 		Image:                 plan.Image.ValueString(),
 		Tag:                   plan.Tag.ValueString(),
-		InstanceCount:         1,
+		InstanceCount:         int(plan.Replicas.ValueInt64()),
 		BuildImage:            false,
 		Ports:                 mapPortToPortModel(plan.Ports),
 		Env:                   append(mapEnvsToClientEnvs(plan.Env, false), mapEnvsToClientEnvs(plan.EnvSecret, true)...),
@@ -247,6 +347,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		Args:                  plan.Args,
 		Region:                plan.Region.ValueString(),
 		AkashMachineImageName: plan.MachineImage.ValueString(),
+		CustomInstanceSpecs:   customSpecs,
 	}
 
 	createRequest := client.CreateInstanceRequest{
@@ -256,8 +357,14 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		ClusterURL:      plan.Image.ValueString(),
 		ClusterProvider: "DOCKERHUB",
 		ClusterName:     plan.ClusterName.ValueString(),
-		HealthCheckURL:  healthCheck.Path.ValueString(),
-		HealthCheckPort: healthCheck.Port.String(),
+	}
+
+	if !plan.HealthCheck.IsNull() {
+		var healthCheck HealthCheck
+		plan.HealthCheck.As(ctx, &healthCheck, opts)
+
+		createRequest.HealthCheckURL = healthCheck.Path.ValueString()
+		createRequest.HealthCheckPort = healthCheck.Port.String()
 	}
 
 	response, err := r.client.CreateClusterInstance(createRequest)
@@ -359,6 +466,16 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 	state.Commands = order.ClusterInstanceConfiguration.Command
 	state.Env = mapClientEnvsToEnvs(order.ClusterInstanceConfiguration.Env, false)
 	state.EnvSecret = mapClientEnvsToEnvs(order.ClusterInstanceConfiguration.Env, true)
+	state.Image = types.StringValue(order.ClusterInstanceConfiguration.Image)
+	state.MachineImage = types.StringValue(order.ClusterInstanceConfiguration.AgreedMachineImage.MachineType)
+	state.Ports = mapModelPortToPort(order.ClusterInstanceConfiguration.Ports)
+	state.Region = types.StringValue(order.ClusterInstanceConfiguration.Region)
+	state.Tag = types.StringValue(order.ClusterInstanceConfiguration.Tag)
+	state.Replicas = types.Int64Value(int64(order.ClusterInstanceConfiguration.InstanceCount))
+
+	numberStr := order.ClusterInstanceConfiguration.AgreedMachineImage.Storage[:len(order.ClusterInstanceConfiguration.AgreedMachineImage.Storage)-2] // Remove the last two characters ("Gi")
+	number, _ := strconv.Atoi(numberStr)
+	state.Storage = types.Int64Value(int64(number))
 
 	if instance.HealthCheck.Port != (client.Port{}) {
 		hcTypes := make(map[string]attr.Type)
@@ -373,11 +490,28 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 		state.HealthCheck = types.ObjectValueMust(hcTypes, hcValues)
 	}
 
-	state.Image = types.StringValue(order.ClusterInstanceConfiguration.Image)
-	state.MachineImage = types.StringValue(order.ClusterInstanceConfiguration.AgreedMachineImage.MachineType)
-	state.Ports = mapModelPortToPort(order.ClusterInstanceConfiguration.Ports)
-	state.Region = types.StringValue(order.ClusterInstanceConfiguration.Region)
-	state.Tag = types.StringValue(order.ClusterInstanceConfiguration.Tag)
+	if order.ClusterInstanceConfiguration.AgreedMachineImage.PersistentStorage != nil &&
+		order.ClusterInstanceConfiguration.AgreedMachineImage.PersistentStorage.Class != "" {
+		var pStorage = order.ClusterInstanceConfiguration.AgreedMachineImage.PersistentStorage
+
+		psTypes := make(map[string]attr.Type)
+		psValues := make(map[string]attr.Value)
+
+		psTypes["class"] = types.StringType
+		psTypes["mount_point"] = types.StringType
+		psTypes["size"] = types.Int64Type
+
+		value, _ := GetStorageClassFromValue(pStorage.Class)
+
+		psValues["class"] = types.StringValue(value)
+		psValues["mount_point"] = types.StringValue(pStorage.MountPoint)
+
+		numberStr := pStorage.Size[:len(pStorage.Size)-2] // Remove the last two characters ("Gi")
+		number, _ := strconv.Atoi(numberStr)
+		psValues["size"] = types.Int64Value(int64(number))
+
+		state.PersistentStorage = types.ObjectValueMust(psTypes, psValues)
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
