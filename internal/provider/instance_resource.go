@@ -400,7 +400,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		Region:        plan.Region.ValueString(),
 	}
 
-	if !plan.Cpu.IsNull() && !plan.Memory.IsNull() {
+	if plan.MachineImage.ValueString() == "" {
 		customSpecs.CPU = plan.Cpu.ValueString()
 		customSpecs.Memory = fmt.Sprintf("%sGi", plan.Memory.ValueString())
 
@@ -438,7 +438,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	eventDataString, err := r.client.WaitForDeployedEvent(topicId.String())
+	eventDataString, err := r.client.WaitForDeployedEvent(ctx, topicId.String())
 
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -457,7 +457,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	if plan.Cpu.IsNull() && plan.Memory.IsNull() {
+	if plan.MachineImage.ValueString() == "" {
 		order, err := r.client.GetClusterInstanceOrder(response.ClusterInstanceOrderID)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -495,7 +495,7 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	if state.Id.IsNull() {
+	if state.Id.ValueString() == "" {
 		resp.Diagnostics.AddError(
 			"Id not provided. Unable to get instance details.",
 			"Id not provided. Unable to get instance details.",
@@ -618,7 +618,7 @@ func (r *InstanceResource) Update(ctx context.Context, req resource.UpdateReques
 	opts := basetypes.ObjectAsOptions{}
 	plan.HealthCheck.As(ctx, &healthCheck, opts)
 
-	if !healthCheck.Path.IsNull() && !healthCheck.Port.IsNull() {
+	if healthCheck.Path.ValueString() != "" && !healthCheck.Port.IsNull() {
 
 		hcUpdate := client.HealthCheckUpdateReq{
 			HealthCheckURL:  healthCheck.Path.ValueString(),
@@ -682,7 +682,7 @@ func (r *InstanceResource) Update(ctx context.Context, req resource.UpdateReques
 			return
 		}
 
-		_, err = r.client.WaitForDeployedEvent(topicId.String())
+		_, err = r.client.WaitForDeployedEvent(ctx, topicId.String())
 
 		if err != nil {
 			resp.Diagnostics.AddError(

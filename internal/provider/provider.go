@@ -72,6 +72,8 @@ func (p *SpheronProvider) Configure(ctx context.Context, req provider.ConfigureR
 	token := os.Getenv("SPHERON_TOKEN")
 
 	if !config.Token.IsNull() {
+		tflog.Info(ctx, "Using token from config")
+
 		token = config.Token.ValueString()
 	}
 

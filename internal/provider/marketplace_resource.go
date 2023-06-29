@@ -342,7 +342,7 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 		InstanceCount:        int(plan.Replicas.ValueInt64()),
 	}
 
-	if !plan.Cpu.IsNull() && !plan.Memory.IsNull() {
+	if plan.MachineImage.ValueString() == "" {
 		customSpecs.CPU = plan.Cpu.ValueString()
 		customSpecs.Memory = fmt.Sprintf("%sGi", plan.Memory.ValueString())
 
@@ -382,7 +382,7 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	eventDataString, err := r.client.WaitForDeployedEvent(topicId.String())
+	eventDataString, err := r.client.WaitForDeployedEvent(ctx, topicId.String())
 
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -404,7 +404,7 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 	plan.Id = types.StringValue(response.ClusterInstanceID)
 	plan.Ports = types.ListValueMust(types.ObjectType{AttrTypes: getPortAtrTypes()}, mapModelPortToPortValue(ports))
 
-	if plan.Cpu.IsNull() && plan.Memory.IsNull() {
+	if plan.MachineImage.ValueString() == "" {
 		order, err := r.client.GetClusterInstanceOrder(response.ClusterInstanceOrderID)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -437,7 +437,7 @@ func (r *MarketplaceInstanceResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	if state.Id.IsNull() {
+	if state.Id.ValueString() == "" {
 		resp.Diagnostics.AddError(
 			"Id not provided. Unable to get marketplace instance details.",
 			"Id not provided. Unable to get marketplace instance details.",
@@ -475,7 +475,6 @@ func (r *MarketplaceInstanceResource) Read(ctx context.Context, req resource.Rea
 		state.Region = types.StringValue("")
 		state.Name = types.StringValue(cluster.Name)
 
-		// Save updated data into Terraform state
 		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 
 		return
