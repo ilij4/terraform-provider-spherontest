@@ -267,7 +267,7 @@ func (api *SpheronApi) WaitForDeployedEvent(ctx context.Context, topicID string)
 			}
 
 			if strings.Contains(data, `"type":3`) {
-				return "", nil
+				return "", fmt.Errorf("Deployment failed")
 			}
 		}
 	}

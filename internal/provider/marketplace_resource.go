@@ -75,6 +75,7 @@ func (r *MarketplaceInstanceResource) Schema(ctx context.Context, req resource.S
 			"machine_image": schema.StringAttribute{
 				MarkdownDescription: "Machine image name which should be used for deploying instance.",
 				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
@@ -222,10 +223,16 @@ func (r *MarketplaceInstanceResource) Schema(ctx context.Context, req resource.S
 						"container_port": schema.Int64Attribute{
 							MarkdownDescription: "Container port that will be exposed.",
 							Computed:            true,
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
+							},
 						},
 						"exposed_port": schema.Int64Attribute{
 							MarkdownDescription: "The port container port will be exposed to. Exposed port will be know and available for use after the deployment.",
 							Computed:            true,
+							PlanModifiers: []planmodifier.Int64{
+								int64planmodifier.UseStateForUnknown(),
+							},
 						},
 					},
 				},
@@ -404,7 +411,7 @@ func (r *MarketplaceInstanceResource) Create(ctx context.Context, req resource.C
 	plan.Id = types.StringValue(response.ClusterInstanceID)
 	plan.Ports = types.ListValueMust(types.ObjectType{AttrTypes: getPortAtrTypes()}, mapModelPortToPortValue(ports))
 
-	if plan.MachineImage.ValueString() == "" {
+	if plan.Cpu.ValueString() == "" || plan.Memory.ValueString() == "" {
 		order, err := r.client.GetClusterInstanceOrder(response.ClusterInstanceOrderID)
 		if err != nil {
 			resp.Diagnostics.AddError(

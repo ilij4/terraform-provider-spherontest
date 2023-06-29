@@ -457,7 +457,7 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	if plan.MachineImage.ValueString() == "" {
+	if plan.Cpu.ValueString() == "" || plan.Memory.ValueString() == "" {
 		order, err := r.client.GetClusterInstanceOrder(response.ClusterInstanceOrderID)
 		if err != nil {
 			resp.Diagnostics.AddError(
@@ -618,22 +618,19 @@ func (r *InstanceResource) Update(ctx context.Context, req resource.UpdateReques
 	opts := basetypes.ObjectAsOptions{}
 	plan.HealthCheck.As(ctx, &healthCheck, opts)
 
-	if healthCheck.Path.ValueString() != "" && !healthCheck.Port.IsNull() {
+	hcUpdate := client.HealthCheckUpdateReq{
+		HealthCheckURL:  healthCheck.Path.ValueString(),
+		HealthCheckPort: int(healthCheck.Port.ValueInt64()),
+	}
 
-		hcUpdate := client.HealthCheckUpdateReq{
-			HealthCheckURL:  healthCheck.Path.ValueString(),
-			HealthCheckPort: int(healthCheck.Port.ValueInt64()),
-		}
+	_, err = r.client.UpdateClusterInstanceHealthCheckInfo(plan.Id.ValueString(), hcUpdate)
 
-		_, err := r.client.UpdateClusterInstanceHealthCheckInfo(plan.Id.ValueString(), hcUpdate)
-
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to update instance healthchek endpoint.",
-				err.Error(),
-			)
-			return
-		}
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update instance healthchek endpoint.",
+			err.Error(),
+		)
+		return
 	}
 
 	instance, err := r.client.GetClusterInstance(plan.Id.ValueString())
